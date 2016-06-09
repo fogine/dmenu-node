@@ -23,7 +23,7 @@ init();
 
 //defaults - will be joined with config file options if found
 var options = {
-    dmenu: ['-q', '-b', '-z'],
+    dmenu: ['dmenu', '-q', '-b', '-z'],
     paths: [$HOME + '/.local/bin', '/usr/local/bin', '/usr/bin'],
     defaultWebCmd: 'google-chrome "%b"',
     commands: {}
@@ -337,7 +337,7 @@ function getSelection(files, callback) {
     });
 
     var out;
-    var dmenu = spawn('dmenu', options.dmenu);
+    var dmenu = spawn(options.dmenu[0], options.dmenu.slice(1));
 
     dmenu.stdin.write(list.join('\n'));
     dmenu.stdin.end();
