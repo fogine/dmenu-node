@@ -92,6 +92,17 @@ getFileOptions(function(err, result) {
                     } else if (opt.cache === 'all') {
                         result.push(selection);
                     }
+                } else {
+                    //example
+                    //only command alias "todo" is cached, next
+                    //we run dmenu and type "todo some task", now we loaded cached
+                    //object {file: 'todo', cache: alias} whose `file` property was
+                    //chaned to current dmenu stdout ('toto some task') so here
+                    //'selection' obj == {file: 'todo some task', cache: alias}
+                    //we must fix that here
+                    if (opt.cache === 'alias' && commandCandidate !== selection.file) {
+                        selection.file = commandCandidate;
+                    }
                 }
             } else {
                 runCommand(selection.file);
