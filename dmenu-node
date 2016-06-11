@@ -61,9 +61,15 @@ getFileOptions(function(err, result) {
 
             if (!_isPlainObject(selection)) {
                 var cacheCandidate = getFirstWord(selection).trim();
+                var cmd = commands[cacheCandidate];
 
                 selectionCandidate = result.find(function(entity) {
-                    return entity.file.trim() == cacheCandidate;
+                    var entityName = entity.file.trim();
+                    if (cmd && cmd.cache === 'single') {
+                        entityName = getFirstWord(entityName);
+                    }
+
+                    return entityName == cacheCandidate;
                 });
 
                 if (_isPlainObject(selectionCandidate)) {
@@ -89,7 +95,7 @@ getFileOptions(function(err, result) {
                     if (opt.cache === 'alias') {
                         selection.file = commandCandidate;
                         result.push(selection);
-                    } else if (opt.cache === 'all') {
+                    } else if (['all', 'single'].indexOf(opt.cache) !== -1) {
                         result.push(selection);
                     }
                 } else {
