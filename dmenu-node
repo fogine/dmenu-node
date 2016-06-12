@@ -1,11 +1,12 @@
 #!/bin/sh
 ':' //; exec "$(command -v nodejs || command -v node)" "$0" "$@"
 
-var fs    = require('fs');
-var path  = require('path');
-var util  = require('util');
-var spawn = require('child_process').spawn;
-var exec  = require('child_process').exec;
+var fs       = require('fs');
+var path     = require('path');
+var util     = require('util');
+var spawn    = require('child_process').spawn;
+var exec     = require('child_process').exec;
+var execSync = require('child_process').execSync;
 
 var env             = process.env;
 var $HOME           = env.HOME;
@@ -18,7 +19,7 @@ var configDirPath  = $HOME + '/.config/' + app;
 var configFilePath = configDirPath + '/config';
 var fileCollection = [];
 var USING_CACHED_DATA   = false;
-var cacheOptions   = ['single', 'all', 'alias'];
+var cacheOptions   = ['single', 'alias', 'all'];
 
 init();
 
@@ -63,9 +64,14 @@ getFileOptions(function(err, result) {
             if (!_isPlainObject(selection)) {
                 var cacheCandidate = getFirstWord(selection).trim();
                 var cmd = commands[cacheCandidate];
+                //handle dynamic cache string generation (when cmd.cache == bash script)
+                if (cmd && cacheOptions.indexOf(cmd.cache) === -1 && typeof cmd.cache === 'string' && cmd.cache) {
+                    cacheCandidate = getCacheString(cmd, selection);
+                    cacheCandidate = cacheCandidate && cacheCandidate.trim();
+                }
 
                 selectionCandidate = result.find(function(entity) {
-                    var entityName = entity.file.trim();
+                    var entityName = entity.file.toString().trim();
                     if (cmd && cmd.cache === 'single') {
                         entityName = getFirstWord(entityName);
                     }
@@ -91,12 +97,10 @@ getFileOptions(function(err, result) {
             if (commands.hasOwnProperty(commandCandidate)) {
                 var opt = commands[commandCandidate];
                 runCustomCommand(commandCandidate, selection.file.substr(commandCandidate.length), opt);
-
                 if (notInCache) {
-                    if (opt.cache === 'alias') {
-                        selection.file = commandCandidate;
-                        result.push(selection);
-                    } else if (['all', 'single'].indexOf(opt.cache) !== -1) {
+                    selection.file = getCacheString(opt, selection.file);
+                    if (selection.file !== null) {
+                        selection.file = selection.file.trim();
                         result.push(selection);
                     }
                 } else {
@@ -109,6 +113,13 @@ getFileOptions(function(err, result) {
                     //we must fix that here
                     if (opt.cache === 'alias' && commandCandidate !== selection.file) {
                         selection.file = commandCandidate;
+                    } else if (cacheOptions.indexOf(opt.cache) && opt.cache) {
+                        selection.file = getCacheString(opt, selection.file);
+                        if (selection.file === null) {
+                            result.splice(result.indexOf(selection), 1);
+                        } else {
+                            selection.file = selection.file.trim();
+                        }
                     }
                 }
             } else {
@@ -121,9 +132,40 @@ getFileOptions(function(err, result) {
 
             sortFileOptions(result);
             saveCache(cacheFilePath, result);
+
+            process.exit(0);
         })
     }
 });
+
+
+/**
+ * getCacheString
+ *
+ * @param {Object|undefined} opt
+ * @param {String} cacheCandidate
+ *
+ * @return {String}
+ */
+function getCacheString(opt, cacheCandidate) {
+    if (!_isPlainObject(opt)) {
+        return null;
+    }
+
+    if (opt.cache === 'alias') {
+        return getFirstWord(cacheCandidate);
+    } else if (['all', 'single'].indexOf(opt.cache) !== -1) {
+        return cacheCandidate;
+    } else if (typeof opt.cache === 'string' && opt.cache) {
+        var cmd = expandCommand(opt.cache, cacheCandidate);
+        var out = execSync(cmd);
+        if (!out) {
+            return null;
+        } else {
+            return out.toString().trim();
+        }
+    }
+}
 
 /**
  * getFileOptions
@@ -177,24 +219,27 @@ function runCustomCommand(command, args, opt) {
     } else if (opt.type === 'terminal') {
         var cmd = opt.cmd;
 
-        cmd = expandCommand(cmd, "'" + args.trim() + "'");
+        cmd = expandCommand(cmd, args.trim());
         runCommand(cmd);
     } else {
         console.error('unsupported custom command type: ' + opt.type);
     }
 
-    function expandCommand(command, arg) {
-        var offset = command.indexOf('%b');
-        var pre = command.substr(0, offset);
-        var match = arg;
-        var post = command.substr(offset+2);
-        return pre + match + post;
-        //return command.replace(/^.*(%b).*$/, function(match, p1, offset, command) {
-            //return command.substr(0, offset) + arg + command.substr(offset+match.length);
-        //});
-    }
 }
 
+/**
+ * expandCommand
+ *
+ * @param {String} command
+ * @param {String} arg
+ */
+function expandCommand(command, arg) {
+    var offset = command.indexOf('%b');
+    var pre = command.substr(0, offset);
+    var match = arg;
+    var post = command.substr(offset+2);
+    return pre + match + post;
+}
 
 /**
  * runCommand
