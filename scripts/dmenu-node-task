@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+
+#very simple script designed to work with `dmenu-node` and `taskwarrior` command line app
+#so far it supports tast categories, deleting & creating new tasts
+
+#terminate on any error
+#important!
+set -e
+
+trimTrailingAndLeadingQuote() {
+    #sed removes quote character from begining of first line and end of last line
+    sed -e '$ s/^\(.*\)[\t ]*"$/\1/' -e '1 s/^[\t ]*"\(.*\)$/\1/'
+}
+
+escapeQuotes() {
+    sed -e 's/"/\\\"/g'
+}
+
+deleteOrCreateTask() {
+    #we must append space to input because otherwise awk would not match last word in input when record separator (RS)=" "
+    input=" "$1" "
+
+    # parse "category" of task from input eg:
+    # >  common/ go to grocery store
+    # output should be "common/"
+    category=$(echo "$input" | awk 'BEGIN{RS=" "} /\/$/{print $1}')
+
+    # parse "task" from input eg:
+    # >  common/ go to grocery store
+    # output should be "got to grocery store"
+    task=$(echo "$input" | escapeQuotes | awk 'BEGIN{RS=" "; ORS=" "} /[^\/]$/{print}')
+
+    #trim leading and trailing white space
+    task=$(echo "$task" | xargs)
+
+    if [[ "$category" != "" ]]; then
+        #remove leading '/' character from category name
+        category=$(echo $category | tr -d '/')
+        #build up task category filter
+        # (see taskwarrior filter options)
+        project="project:$category"
+    fi
+
+    if [[ "$task" != "" ]]; then
+        task add "$task" "$project"
+        notify-send "New task created" -t 3000
+        exit 0
+    else
+        #get list of tasks
+        #must $(echo list) because we need to expand \n characters
+        # taskwarrior exports tasks as JSON, we need to ge the json data to following format:
+        # common ,, go to grocery store ,, 1
+        # => where "common" is category of task, "go to grocery store" is task description, and "1" is task id
+        list=$(echo -e $(task status:pending "$project" export rc.json.array=on | jq '. | map([.project // empty, .description,.id|tostring] | join(" ,, ")) | join("\n")') )
+
+        #customize list for dmenu
+        #should transform input eg:
+        # common ,, go to grocery store ,, 1
+        # => to output:
+        # common | go to grocery store
+        dmenuList=$(echo -e "$list" | trimTrailingAndLeadingQuote | awk 'BEGIN{FS=",,";OFS="|"} {$(NF--);print}')
+
+        #get dmenu selection
+        selection=$(echo -e "$dmenuList" | dmenu -b -l 2 -t)
+
+        if [[ "$selection" != "" ]]; then
+            pattern=$(echo -e $selection |  sed 's:|:,,:g' | sed 's:\\:\\\\\\\\:g')
+            taskId=$(echo "$list" | trimTrailingAndLeadingQuote | awk -v pattern="$pattern" 'BEGIN{FS=",,"} $0 ~ pattern {print $NF}')
+            #trim leading and trailing white space
+            taskId=$(echo "$taskId" | xargs)
+
+            if [[ "$taskId" != "" ]]; then
+                yes | task "$taskId" delete
+                notify-send "Task id:$taskId deleted" -t 4000
+                exit 0
+            else
+                deleteOrCreateTask "$selection"
+            fi
+        fi
+    fi
+}
+
+deleteOrCreateTask "$1"
