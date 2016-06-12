@@ -18,6 +18,7 @@ var configDirPath  = $HOME + '/.config/' + app;
 var configFilePath = configDirPath + '/config';
 var fileCollection = [];
 var USING_CACHED_DATA   = false;
+var cacheOptions   = ['single', 'all', 'alias'];
 
 init();
 
@@ -176,7 +177,7 @@ function runCustomCommand(command, args, opt) {
     } else if (opt.type === 'terminal') {
         var cmd = opt.cmd;
 
-        cmd = expandCommand(cmd, '"' + args.trim() + '"');
+        cmd = expandCommand(cmd, "'" + args.trim() + "'");
         runCommand(cmd);
     } else {
         console.error('unsupported custom command type: ' + opt.type);
