@@ -644,6 +644,10 @@ function async(pool, callback) {
     var failed = false;
     var results = [];
 
+    if (!poolLen) {
+        return callback(undefined, results);
+    }
+
     pool.forEach(function(fn) {
         fn(function(err, data) {
             if (err && !failed) {
